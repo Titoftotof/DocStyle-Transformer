@@ -1,0 +1,192 @@
+# DocStyle Transformer — Apple Minimal Design System
+# All dimensions in DXA (1 inch = 1440 DXA, 1 pt = 20 DXA)
+# Font sizes in half-points (1 pt = 2 half-points) unless noted
+
+colors:
+  black: "#1D1D1F"
+  dark_gray: "#333336"
+  medium_gray: "#6E6E73"
+  light_gray: "#86868B"
+  very_light_gray: "#D2D2D7"
+  accent_blue: "#0071E3"
+  accent_dark_blue: "#0077ED"
+  bg_light: "#F5F5F7"
+  warning_bg: "#FFF3CD"
+  warning_border: "#F5C542"
+  white: "#FFFFFF"
+
+typography:
+  display_font: "SF Pro Display"
+  body_font: "SF Pro Text"
+  fallback_fonts:
+    - "Helvetica Neue"
+    - "Calibri"
+    - "Arial"
+
+  heading1:
+    size: 40        # 20pt
+    bold: true
+    color: "black"
+    spacing_before: 480   # 24pt
+    spacing_after: 200    # 10pt
+    keep_with_next: true
+
+  heading2:
+    size: 32        # 16pt
+    bold: true
+    color: "dark_gray"
+    spacing_before: 360   # 18pt
+    spacing_after: 160    # 8pt
+    keep_with_next: true
+
+  heading3:
+    size: 26        # 13pt
+    bold: true
+    color: "medium_gray"
+    spacing_before: 240   # 12pt
+    spacing_after: 120    # 6pt
+    keep_with_next: true
+
+  body:
+    size: 21        # 10.5pt
+    bold: false
+    color: "dark_gray"
+    line_spacing: 312     # ~15.6pt (1.48x line height)
+    spacing_after: 160    # 8pt
+
+  caption:
+    size: 18        # 9pt
+    bold: false
+    color: "medium_gray"
+    spacing_after: 80
+
+  small:
+    size: 16        # 8pt
+    bold: false
+    color: "light_gray"
+
+page:
+  format: "US Letter"
+  width: 12240      # 8.5 inches
+  height: 15840     # 11 inches
+  margins:
+    top: 1440       # 1 inch
+    right: 1440
+    bottom: 1440
+    left: 1440
+  usable_width: 9360  # width - left - right
+
+components:
+  accent_bar:
+    border_bottom_size: 6     # pt
+    color: "accent_blue"
+    spacing_after: 200
+
+  info_box:
+    border_left_size: 12      # pt
+    border_left_color: "accent_blue"
+    background: "bg_light"
+    padding_top: 120
+    padding_bottom: 120
+    padding_left: 240
+    padding_right: 240
+    title_size: 21
+    title_bold: true
+    title_color: "accent_blue"
+    body_size: 21
+    body_color: "dark_gray"
+    spacing_before: 200
+    spacing_after: 200
+
+  warning_box:
+    border_left_size: 12
+    border_left_color: "warning_border"
+    background: "warning_bg"
+    padding_top: 120
+    padding_bottom: 120
+    padding_left: 240
+    padding_right: 240
+    title_size: 21
+    title_bold: true
+    title_color: "dark_gray"
+    body_size: 21
+    body_color: "dark_gray"
+    spacing_before: 200
+    spacing_after: 200
+
+  table:
+    header_bg: "accent_blue"
+    header_text_color: "white"
+    header_font_size: 21
+    header_bold: true
+    header_border_bottom_size: 4
+    row_border_size: 1
+    row_border_color: "very_light_gray"
+    zebra_stripe: true
+    zebra_color: "bg_light"
+    cell_padding_top: 80
+    cell_padding_bottom: 80
+    cell_padding_left: 120
+    cell_padding_right: 120
+    body_font_size: 21
+    body_color: "dark_gray"
+
+  steps:
+    number_size: 56     # 28pt
+    number_color: "accent_blue"
+    number_bold: true
+    title_size: 24      # 12pt
+    title_bold: true
+    title_color: "black"
+    desc_size: 21       # 10.5pt
+    desc_color: "dark_gray"
+    spacing_between: 200
+
+  bullet_list:
+    indent_per_level: 360    # 0.25 inch per level
+    bullet_color: "accent_blue"
+    text_size: 21
+    text_color: "dark_gray"
+    spacing_after: 80
+    max_depth: 3
+
+  numbered_list:
+    indent_per_level: 360
+    number_color: "accent_blue"
+    text_size: 21
+    text_color: "dark_gray"
+    spacing_after: 80
+    max_depth: 3
+
+header_footer:
+  header:
+    text: ""              # Auto-filled with document title
+    size: 16              # 8pt
+    color: "light_gray"
+    alignment: "right"
+    border_bottom_size: 0
+
+  footer:
+    left_text: "Confidentiel"
+    right_text: "Page {page_number}"
+    size: 16
+    color: "light_gray"
+    border_top_size: 1
+    border_top_color: "very_light_gray"
+
+cover:
+  top_spacer: 2400          # Space before title
+  title_size: 144           # 72pt
+  title_color: "black"
+  title_accent_color: "accent_blue"
+  title_font: "SF Pro Display"
+  accent_bar_width: 2400    # DXA
+  accent_bar_height: 6      # pt
+  accent_bar_color: "accent_blue"
+  subtitle_size: 32         # 16pt
+  subtitle_color: "medium_gray"
+  metadata_size: 24         # 12pt
+  metadata_color: "light_gray"
+  metadata_spacing: 160
+  ref_prefix: "DOC"
+  ref_format: "{prefix}-MAN-{year}-{seq:03d}"
