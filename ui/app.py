@@ -250,23 +250,12 @@ class DocStyleApp:
         try:
             q.put(_ProgressMsg("progress", 10, "Loading design system..."))
 
-            from core.mapper import DesignSystem, StyleMapper
+            from core.generator import DocumentGenerator
 
             theme_path = options.get("theme_path") or None
-            design = DesignSystem(theme_path=theme_path)
-            mapper = StyleMapper(design)
+            generator = DocumentGenerator(theme_path=theme_path)
 
-            q.put(_ProgressMsg("progress", 30, "Mapping styles..."))
-
-            # Map all elements to verify the style system works
-            for section in tree.sections:
-                mapper.map_heading(section.level)
-                for child in section.children:
-                    mapper.map_element(child)
-            for elem in tree.preamble:
-                mapper.map_element(elem)
-
-            q.put(_ProgressMsg("progress", 50, "Generating output document..."))
+            q.put(_ProgressMsg("progress", 40, "Generating styled document..."))
 
             # Build output path
             input_p = Path(input_path)
@@ -274,58 +263,21 @@ class DocStyleApp:
             output_name = input_p.stem + "_transformed.docx"
             output_path = str(output_dir / output_name)
 
-            # Generate the output document
-            from docx import Document as new_docx
+            # Build generator options
+            gen_options: dict = {
+                "generate_cover": options.get("generate_cover", True),
+                "generate_toc": options.get("generate_toc", True),
+                "number_sections": options.get("number_sections", True),
+                "header_footer": options.get("header_footer", True),
+            }
+            if options.get("cover_title_override"):
+                gen_options["cover_title_override"] = options["cover_title_override"]
 
-            doc = new_docx()
+            q.put(_ProgressMsg("progress", 60, "Applying design system..."))
 
-            q.put(_ProgressMsg("progress", 60, "Building cover page..."))
-
-            # Cover page
-            if options.get("generate_cover", True):
-                from core.cover import CoverGenerator
-
-                cover_gen = CoverGenerator(design)
-                metadata = tree.metadata
-                if options.get("cover_title_override"):
-                    metadata.title = options["cover_title_override"]
-                cover_gen.generate(doc, metadata)
-
-            q.put(_ProgressMsg("progress", 70, "Building table of contents..."))
-
-            # TOC placeholder
-            if options.get("generate_toc", True):
-                toc_para = doc.add_paragraph("Table of Contents")
-                toc_para.style = doc.styles["Heading 1"]
-                for section in tree.sections:
-                    indent = "    " * (section.level - 1)
-                    label = section.heading
-                    if options.get("number_sections") and section.number is not None:
-                        label = f"{section.number:02d}  {label}"
-                    doc.add_paragraph(f"{indent}{label}")
-                # Page break after TOC
-                doc.add_page_break()
-
-            q.put(_ProgressMsg("progress", 85, "Writing sections..."))
-
-            # Document body
-            for section in tree.sections:
-                heading_text = section.heading
-                if options.get("number_sections") and section.number is not None:
-                    heading_text = f"{section.number:02d}  {heading_text}"
-                doc.add_heading(heading_text, level=min(section.level, 4))
-
-                for child in section.children:
-                    self._render_element(doc, child)
-
-            # Mention
-            if options.get("mention"):
-                doc.add_paragraph("")
-                doc.add_paragraph(options["mention"])
+            generator.generate(tree, output_path, options=gen_options)
 
             q.put(_ProgressMsg("progress", 95, "Saving document..."))
-
-            doc.save(output_path)
 
             stats = tree.summary()
             q.put(_ProgressMsg(
@@ -339,71 +291,6 @@ class DocStyleApp:
                 "error", 0, "Transformation failed",
                 data=str(exc),
             ))
-
-    @staticmethod
-    def _render_element(doc: Any, elem: Any) -> None:
-        """Render a single content element into the python-docx document.
-
-        This is a simplified renderer that produces basic output.  A
-        production implementation would use the full style mapper and
-        generator pipeline.
-        """
-        from core.models import (
-            Callout,
-            Image,
-            ListBlock,
-            PageBreak,
-            Paragraph,
-            StepsBlock,
-            Table,
-        )
-
-        if isinstance(elem, Paragraph):
-            text = elem.text
-            if text.strip():
-                doc.add_paragraph(text)
-
-        elif isinstance(elem, Table):
-            if elem.headers or elem.rows:
-                cols = len(elem.headers) if elem.headers else (
-                    len(elem.rows[0]) if elem.rows else 1
-                )
-                tbl = doc.add_table(
-                    rows=1 + len(elem.rows), cols=cols
-                )
-                tbl.style = "Table Grid"
-                # Headers
-                if elem.headers:
-                    for ci, hdr in enumerate(elem.headers):
-                        tbl.rows[0].cells[ci].text = hdr
-                # Data rows
-                for ri, row in enumerate(elem.rows):
-                    for ci, cell in enumerate(row):
-                        if ci < cols:
-                            tbl.rows[ri + 1].cells[ci].text = cell
-
-        elif isinstance(elem, Callout):
-            prefix = f"[{elem.callout_type.value.upper()}]"
-            title = f" {elem.title}" if elem.title else ""
-            doc.add_paragraph(f"{prefix}{title}: {elem.body}")
-
-        elif isinstance(elem, ListBlock):
-            for item in elem.items:
-                bullet = "-" if elem.list_type.value == "bullet" else f"{elem.items.index(item) + 1}."
-                indent = "  " * item.level
-                doc.add_paragraph(f"{indent}{bullet} {item.text}")
-
-        elif isinstance(elem, StepsBlock):
-            for step in elem.steps:
-                doc.add_paragraph(f"Step {step.number}: {step.title}")
-                if step.description:
-                    doc.add_paragraph(f"    {step.description}")
-
-        elif isinstance(elem, Image):
-            doc.add_paragraph(f"[Image: {elem.filename}]")
-
-        elif isinstance(elem, PageBreak):
-            doc.add_page_break()
 
     # ── Progress polling ──────────────────────────────────────────────
 
