@@ -28,8 +28,16 @@ def _build_argument_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument(
-        "input",
+        "-i", "--input",
+        dest="input",
+        default=None,
         help="Path to the input .docx file.",
+    )
+    parser.add_argument(
+        "positional_input",
+        nargs="?",
+        default=None,
+        help="Path to the input .docx file (positional).",
     )
     parser.add_argument(
         "-o", "--output",
@@ -148,7 +156,9 @@ def main() -> None:
     _setup_logging(args.verbose)
 
     # -- Validate input ----------------------------------------------------
-    input_path = args.input
+    input_path = args.input or args.positional_input
+    if not input_path:
+        parser.error("the following arguments are required: input (use -i or pass as positional argument)")
     if not os.path.isfile(input_path):
         logger.error("Input file not found: %s", input_path)
         print(f"Error: Input file not found: {input_path}", file=sys.stderr)
