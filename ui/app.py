@@ -304,9 +304,7 @@ class DocStyleApp:
                         label = f"{section.number:02d}  {label}"
                     doc.add_paragraph(f"{indent}{label}")
                 # Page break after TOC
-                toc_break = doc.add_paragraph()
-                run = toc_break.add_run()
-                run.add_break(docx_break_type=7)
+                doc.add_page_break()
 
             q.put(_ProgressMsg("progress", 85, "Writing sections..."))
 
@@ -405,9 +403,7 @@ class DocStyleApp:
             doc.add_paragraph(f"[Image: {elem.filename}]")
 
         elif isinstance(elem, PageBreak):
-            para = doc.add_paragraph()
-            run = para.add_run()
-            run.add_break(docx_break_type=7)
+            doc.add_page_break()
 
     # ── Progress polling ──────────────────────────────────────────────
 
