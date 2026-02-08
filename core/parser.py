@@ -147,6 +147,8 @@ class DocxParser:
         self._doc: Optional[Document] = None
         self._rels: dict[str, str] = {}  # rId -> target URL (hyperlinks)
         self._numbering_map: dict[str, dict] = {}  # numId -> abstractNum info
+        self._style_name_map: dict[str, str] = {}  # styleId -> canonical name
+        self._style_outline_lvl: dict[str, int] = {}  # styleId -> outline level (0-based)
 
     # ── Public API ─────────────────────────────────────────────────
 
@@ -179,10 +181,16 @@ class DocxParser:
 
         self._build_hyperlink_map()
         self._build_numbering_map()
+        self._build_style_map()
 
         metadata = self._extract_metadata()
         elements = self._walk_body()
         tree = self._build_tree(metadata, elements)
+
+        # Heuristic title detection: if the document's core properties had no
+        # title, try to infer one from the first heading or prominent paragraph.
+        if not tree.metadata.title:
+            tree.metadata.title = self._infer_title(tree)
 
         logger.info(
             "Parsed %d section(s), %d preamble element(s)",
@@ -211,6 +219,28 @@ class DocxParser:
             date=date,
             version=version,
         )
+
+    @staticmethod
+    def _infer_title(tree: DocumentTree) -> str:
+        """Try to infer a document title from the tree structure.
+
+        Checks, in order:
+        1. The first section heading (the first heading in the document is
+           typically the document title, regardless of its level).
+        2. The first preamble paragraph with bold text (likely a title).
+        """
+        if tree.sections:
+            return tree.sections[0].heading
+
+        # Check preamble for a prominent paragraph
+        for elem in tree.preamble:
+            if isinstance(elem, Paragraph) and elem.text.strip():
+                for run in elem.runs:
+                    if run.text.strip():
+                        if run.bold:
+                            return elem.text.strip()
+                        break
+        return ""
 
     # ── Hyperlink / numbering maps ─────────────────────────────────
 
@@ -267,6 +297,48 @@ class DocxParser:
                 fmt = abstract_map.get(abs_id or "", "bullet")
                 self._numbering_map[num_id] = {"format": fmt}
 
+    def _build_style_map(self) -> None:
+        """Build mappings from style ID to canonical name and outline level.
+
+        This allows heading detection to work regardless of whether the style
+        ID is localised (e.g. "Titre1" in French) or differs from the
+        canonical English name (e.g. "Heading1" vs "Heading 1").
+        """
+        assert self._doc is not None
+        self._style_name_map = {}
+        self._style_outline_lvl = {}
+
+        try:
+            styles_element = self._doc.styles.element
+            for style_elem in styles_element.findall(qn("w:style")):
+                style_id = style_elem.get(qn("w:styleId"), "")
+                if not style_id:
+                    continue
+
+                # Canonical name from <w:name w:val="..."/>
+                name_elem = style_elem.find(qn("w:name"))
+                if name_elem is not None:
+                    name = name_elem.get(qn("w:val"), "")
+                    if name:
+                        self._style_name_map[style_id] = name
+
+                # Outline level from <w:pPr><w:outlineLvl w:val="N"/>
+                ppr = style_elem.find(qn("w:pPr"))
+                if ppr is not None:
+                    outline_lvl = ppr.find(qn("w:outlineLvl"))
+                    if outline_lvl is not None:
+                        val = outline_lvl.get(qn("w:val"), "")
+                        if val.isdigit():
+                            self._style_outline_lvl[style_id] = int(val)
+
+            logger.debug(
+                "Style map built: %d styles, %d with outline levels",
+                len(self._style_name_map),
+                len(self._style_outline_lvl),
+            )
+        except Exception:
+            logger.debug("Could not build style map", exc_info=True)
+
     # ── Body walk ──────────────────────────────────────────────────
 
     def _walk_body(self) -> list[dict]:
@@ -287,6 +359,20 @@ class DocxParser:
                 results.extend(self._process_paragraph(child))
             elif tag == "tbl":
                 results.append(self._process_table(child))
+            elif tag == "sdt":
+                # Structured document tags wrap content; recurse into them.
+                sdt_content = child.find(qn("w:sdtContent"))
+                if sdt_content is not None:
+                    for sdt_child in sdt_content:
+                        sdt_tag = (
+                            etree.QName(sdt_child.tag).localname
+                            if isinstance(sdt_child.tag, str)
+                            else ""
+                        )
+                        if sdt_tag == "p":
+                            results.extend(self._process_paragraph(sdt_child))
+                        elif sdt_tag == "tbl":
+                            results.append(self._process_table(sdt_child))
             elif tag == "sectPr":
                 # Final section properties -- may imply a section break but
                 # typically appears at the very end; we emit a page break only
@@ -355,31 +441,71 @@ class DocxParser:
         return results
 
     def _detect_heading_level(self, para_elem) -> Optional[int]:
-        """Return heading level (1-6) if the paragraph is a heading, else *None*."""
+        """Return heading level (1-6) if the paragraph is a heading, else *None*.
+
+        Detection order:
+        1. Paragraph-level outline level (``<w:outlineLvl>`` in ``<w:pPr>``).
+        2. Style outline level from the document's style definitions.
+        3. Style name / style ID pattern matching (English + French).
+        4. Heuristic: bold text with large font size.
+        """
         assert self._doc is not None
 
-        # 1) Check the paragraph style name
         ppr = para_elem.find(qn("w:pPr"))
+        style_id = ""
+
         if ppr is not None:
+            # 0) Direct outline level on the paragraph itself
+            outline_lvl = ppr.find(qn("w:outlineLvl"))
+            if outline_lvl is not None:
+                val = outline_lvl.get(qn("w:val"), "")
+                if val.isdigit():
+                    lvl = int(val)
+                    if lvl <= 5:
+                        return lvl + 1  # outlineLvl is 0-based
+
             pstyle = ppr.find(qn("w:pStyle"))
             if pstyle is not None:
-                style_val = pstyle.get(qn("w:val"), "")
-                m = _HEADING_RE.match(style_val)
+                style_id = pstyle.get(qn("w:val"), "")
+
+        # 1) Check style outline level from the style definition
+        if style_id and style_id in self._style_outline_lvl:
+            outline = self._style_outline_lvl[style_id]
+            if outline <= 5:
+                return outline + 1
+
+        # 2) Check style name (from style map) and style ID for heading patterns
+        if style_id:
+            style_name = self._style_name_map.get(style_id, "")
+            for candidate in (style_name, style_id):
+                if not candidate:
+                    continue
+                # "Heading 1" with space (canonical name)
+                m = _HEADING_RE.match(candidate)
                 if m:
                     return min(int(m.group(1)), 6)
+                # "heading1" / "Heading1" without space (style ID)
+                lower = candidate.lower().replace(" ", "")
+                if lower.startswith("heading") and lower[7:].isdigit():
+                    return min(int(lower[7:]), 6)
+                # French: "Titre1", "titre 1", "Titre 1"
+                lower_nospace = candidate.lower().replace(" ", "")
+                if lower_nospace.startswith("titre"):
+                    rest = lower_nospace[5:]
+                    if rest and rest.isdigit():
+                        return min(int(rest), 6)
 
-                # Some templates use style IDs like "heading1" without the space.
-                lower_style = style_val.lower().replace(" ", "")
-                if lower_style.startswith("heading") and lower_style[-1:].isdigit():
-                    return min(int(lower_style[-1]), 6)
-
-                # Also match "Title" style as level 1.
-                if style_val.lower() == "title":
+            # Title / Subtitle (exact match on name or ID)
+            for candidate in (style_name, style_id):
+                if not candidate:
+                    continue
+                lc = candidate.lower()
+                if lc in ("title", "titre"):
                     return 1
-                if style_val.lower() == "subtitle":
+                if lc in ("subtitle", "sous-titre", "soustitre"):
                     return 2
 
-        # 2) Heuristic: bold text with large font size
+        # 3) Heuristic: bold text with large font size
         runs = para_elem.findall(qn("w:r"))
         if not runs:
             return None
