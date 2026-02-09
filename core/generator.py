@@ -482,6 +482,8 @@ class DocumentGenerator:
         # -- "Section XX" label --
         if number_sections:
             label_para = doc.add_paragraph()
+            label_para.paragraph_format.left_indent = Twips(0)
+            label_para.paragraph_format.first_line_indent = Twips(0)
             label_para.paragraph_format.space_before = Twips(spacing_before)
             label_para.paragraph_format.space_after = Twips(0)
             label_para.paragraph_format.keep_with_next = True
@@ -494,6 +496,8 @@ class DocumentGenerator:
 
         # -- Title --
         title_para = doc.add_paragraph()
+        title_para.paragraph_format.left_indent = Twips(0)
+        title_para.paragraph_format.first_line_indent = Twips(0)
         if not number_sections:
             title_para.paragraph_format.space_before = Twips(spacing_before)
         else:
@@ -509,6 +513,8 @@ class DocumentGenerator:
 
         # -- Accent bar --
         bar_para = doc.add_paragraph()
+        bar_para.paragraph_format.left_indent = Twips(0)
+        bar_para.paragraph_format.first_line_indent = Twips(0)
         bar_para.paragraph_format.space_before = Twips(80)
         bar_para.paragraph_format.space_after = Twips(spacing_after)
 
@@ -540,6 +546,8 @@ class DocumentGenerator:
     ) -> None:
         """Render a level-2 or level-3 heading as a simple styled paragraph."""
         para = doc.add_paragraph()
+        para.paragraph_format.left_indent = Twips(0)
+        para.paragraph_format.first_line_indent = Twips(0)
         para.paragraph_format.space_before = Twips(spacing_before)
         para.paragraph_format.space_after = Twips(spacing_after)
         para.paragraph_format.keep_with_next = keep_with_next
@@ -577,7 +585,10 @@ class DocumentGenerator:
 
         docx_para = doc.add_paragraph()
 
-        # Paragraph-level formatting
+        # Paragraph-level formatting — explicitly zero out indentation so that
+        # the user's Normal.dotm template cannot inject unexpected indents.
+        docx_para.paragraph_format.left_indent = Twips(0)
+        docx_para.paragraph_format.first_line_indent = Twips(0)
         if line_spacing_twips:
             docx_para.paragraph_format.line_spacing = Twips(line_spacing_twips)
         docx_para.paragraph_format.space_after = Twips(spacing_after_twips)
@@ -596,10 +607,11 @@ class DocumentGenerator:
             # Font name -- use run-specific override or body default.
             run.font.name = body_font
 
-            # Font size -- prefer the run's own size (half-points), fall back
-            # to the body style size.
-            run_size_hp = text_run.font_size if text_run.font_size else body_size_hp
-            run.font.size = Pt(run_size_hp / 2.0)
+            # Font size -- always use the design-system body size to ensure
+            # consistent typography.  The original run size (if any) is
+            # intentionally ignored because the goal of the transformer is
+            # to apply a uniform design system.
+            run.font.size = Pt(body_size_hp / 2.0)
 
             # Colour -- prefer run-specific colour, fall back to body colour.
             if text_run.color:
